@@ -833,7 +833,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if(activeTrivia.has(member.id)) return interaction.reply({embeds:[makeEmbed('⚠️','Masih ada trivia aktif!',COLORS.warning)],ephemeral:true});
         const q=TRIVIA[Math.floor(Math.random()*TRIVIA.length)];
         const shuffled=[...q.opts].sort(()=>Math.random()-0.5);
-        const buttons=shuffled.map(opt=>new ButtonBuilder().setCustomId(`trivia_${member.id}_${opt===q.a?'correct':'wrong'}`).setLabel(opt).setStyle(ButtonStyle.Primary));
+        const buttons=shuffled.map((opt,i)=>new ButtonBuilder().setCustomId(`trivia_${member.id}_${opt===q.a?'correct':'wrong'}_${i}`).setLabel(opt).setStyle(ButtonStyle.Primary));
         const row=new ActionRowBuilder().addComponents(buttons);
         const timeout=setTimeout(()=>activeTrivia.delete(member.id),30000);
         activeTrivia.set(member.id,{answer:q.a,timeout});
@@ -884,6 +884,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 // ─── Trivia Button ───
 async function handleTriviaButton(interaction) {
   const parts=interaction.customId.split('_');
+  // format: trivia_userId_correct/wrong_index
   const userId=parts[1], isCorrect=parts[2]==='correct';
   if(interaction.user.id!==userId) return interaction.reply({content:'❌ Bukan trivia kamu!',ephemeral:true});
   const game=activeTrivia.get(userId);
