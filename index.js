@@ -259,12 +259,53 @@ async function endGiveaway(messageId, guild) {
     }
 
     const winnerMentions = winners.map(u => `<@${u.id}>`).join(', ');
+    const adminMention   = `<@${gdata.adminId || gdata.hostId}>`;
+    const klaimText      = gdata.klaim || `Hubungi ${adminMention} untuk klaim hadiah!`;
+
+    // ── Edit pesan giveaway asli ──
     await msg.edit({ embeds: [buildGiveawayEmbed(gdata, true, winners)] });
-    await ch.send({ content: winnerMentions, embeds: [
-      new EmbedBuilder().setTitle('🎊 Pemenang Giveaway!')
-        .setDescription(`**Hadiah:** 🎁 ${gdata.prize}\n\n🏆 **Pemenang:**\n${winnerMentions}\n\n*Hubungi <@${gdata.hostId}> untuk klaim!*`)
-        .setColor(COLORS.gold).setTimestamp().setFooter({ text: 'YTTA Giveaway' })
-    ]});
+
+    // ── Kirim pengumuman pemenang di channel ──
+    const winEmbed = new EmbedBuilder()
+      .setTitle('🎊 SELAMAT! Pemenang Giveaway!')
+      .setDescription(
+        `**Hadiah:** 🎁 **${gdata.prize}**\n\n` +
+        `🏆 **Pemenang (${count} orang):**\n${winnerMentions}\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `📦 **Cara Klaim Hadiah:**\n${klaimText}\n\n` +
+        `👤 **Penyelenggara:** ${adminMention}\n` +
+        `👥 **Total Peserta:** ${eligible.length} orang`
+      )
+      .setColor(COLORS.gold)
+      .setTimestamp()
+      .setFooter({ text: 'YTTA Community Giveaway' });
+
+    await ch.send({ content: winnerMentions, embeds: [winEmbed] });
+
+    // ── DM ke setiap pemenang ──
+    for (const winner of winners) {
+      const dmEmbed = new EmbedBuilder()
+        .setTitle('🎉 Selamat! Kamu Menang Giveaway!')
+        .setDescription(
+          `Hei **${winner.username}**! 🎊\n\n` +
+          `Kamu memenangkan giveaway di server **${guild.name}**!\n\n` +
+          `**Hadiah:** 🎁 **${gdata.prize}**\n\n` +
+          `━━━━━━━━━━━━━━━━━━━━\n` +
+          `📦 **Cara Klaim:**\n${klaimText}\n\n` +
+          `👤 **Hubungi Penyelenggara:** ${adminMention}\n\n` +
+          `*Segera klaim hadiahmu sebelum kadaluarsa!*`
+        )
+        .setColor(COLORS.gold)
+        .setThumbnail(guild.iconURL({ dynamic: true }))
+        .setTimestamp()
+        .setFooter({ text: `Giveaway dari ${guild.name}` });
+
+      await winner.send({ embeds: [dmEmbed] }).catch(() => {
+        // DM gagal (user matikan DM), kirim notif di channel
+        ch.send({ content: `> ⚠️ ${winner}, DM kamu tertutup! Silakan hubungi ${adminMention} langsung untuk klaim hadiah **${gdata.prize}**!` }).catch(()=>{});
+      });
+    }
+
     gdata.winners = winners;
     endedGiveaways.set(messageId, gdata);
   } catch (err) { console.error('[GIVEAWAY]', err); }
@@ -272,17 +313,31 @@ async function endGiveaway(messageId, guild) {
 
 function buildGiveawayEmbed(gdata, ended = false, winners = []) {
   const embed = new EmbedBuilder().setColor(ended ? COLORS.danger : COLORS.gold);
+  const adminMention = `<@${gdata.adminId || gdata.hostId}>`;
   if (!ended) {
-    embed.setTitle('🎉 GIVEAWAY!').setDescription(
-      `**Hadiah:** 🎁 **${gdata.prize}**\n\nReact dengan **${gdata.emoji}** untuk ikut!\n\n` +
-      `**Pemenang:** ${gdata.winnersCount} orang\n**Berakhir:** <t:${Math.floor(gdata.endTime/1000)}:R>\n` +
-      `**Host:** <@${gdata.hostId}>`
-    ).setTimestamp(gdata.endTime).setFooter({ text: 'Berakhir pada' });
+    embed.setTitle('🎉 GIVEAWAY!')
+      .setDescription(
+        `**Hadiah:** 🎁 **${gdata.prize}**\n\n` +
+        `React dengan **${gdata.emoji}** untuk ikut!\n\n` +
+        `**Pemenang:** ${gdata.winnersCount} orang\n` +
+        `**Berakhir:** <t:${Math.floor(gdata.endTime/1000)}:R>\n` +
+        `**Penyelenggara:** ${adminMention}\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `📦 **Cara Klaim:** ${gdata.klaim || `Hubungi ${adminMention}`}`
+      )
+      .setTimestamp(gdata.endTime)
+      .setFooter({ text: 'Berakhir pada' });
   } else {
     const w = winners.length > 0 ? winners.map(u=>`<@${u.id}>`).join(', ') : 'Tidak ada pemenang';
-    embed.setTitle('🎉 GIVEAWAY BERAKHIR!').setDescription(
-      `**Hadiah:** 🎁 **${gdata.prize}**\n\n🏆 **Pemenang:** ${w}\n*Host: <@${gdata.hostId}>*`
-    ).setTimestamp().setFooter({ text: 'Giveaway telah berakhir' });
+    embed.setTitle('🎉 GIVEAWAY BERAKHIR!')
+      .setDescription(
+        `**Hadiah:** 🎁 **${gdata.prize}**\n\n` +
+        `🏆 **Pemenang:** ${w}\n\n` +
+        `📦 **Cara Klaim:** ${gdata.klaim || `Hubungi ${adminMention}`}\n` +
+        `👤 **Penyelenggara:** ${adminMention}`
+      )
+      .setTimestamp()
+      .setFooter({ text: 'Giveaway telah berakhir' });
   }
   return embed;
 }
@@ -363,6 +418,8 @@ const commands = [
     .addStringOption(o => o.setName('hadiah').setDescription('Nama hadiah').setRequired(true))
     .addIntegerOption(o => o.setName('durasi').setDescription('Durasi (menit)').setRequired(true).setMinValue(1).setMaxValue(10080))
     .addStringOption(o => o.setName('emoji').setDescription('Emoji react untuk ikut').setRequired(true))
+    .addStringOption(o => o.setName('klaim').setDescription('Cara klaim hadiah — contoh: DM admin, hadir di VC, dll').setRequired(true))
+    .addUserOption(o => o.setName('admin').setDescription('Tag admin penyelenggara (default: kamu sendiri)'))
     .addIntegerOption(o => o.setName('pemenang').setDescription('Jumlah pemenang (default:1)').setMinValue(1).setMaxValue(10))
     .addChannelOption(o => o.setName('channel').setDescription('Channel giveaway'))
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
@@ -670,16 +727,25 @@ client.on(Events.InteractionCreate, async (interaction) => {
       case 'giveaway-start': {
         const hadiah=options.getString('hadiah'), durasi=options.getInteger('durasi');
         const emoji=options.getString('emoji'), jumlahMenang=options.getInteger('pemenang')||1;
+        const klaim=options.getString('klaim');
+        const adminUser=options.getMember('admin');
+        const adminId = adminUser ? adminUser.id : member.id;
         const targetCh=options.getChannel('channel')||channel;
         const endTime = Date.now() + durasi*60*1000;
-        const gdata = { prize:hadiah, endTime, channelId:targetCh.id, guildId:guild.id, emoji, hostId:member.id, winnersCount:jumlahMenang, timeout:null };
+        const gdata = {
+          prize:hadiah, endTime, channelId:targetCh.id, guildId:guild.id,
+          emoji, hostId:member.id, adminId, klaim,
+          winnersCount:jumlahMenang, timeout:null
+        };
         const msg = await targetCh.send({ embeds: [buildGiveawayEmbed(gdata,false)] });
         await msg.react(emoji).catch(()=>{});
         gdata.timeout = setTimeout(()=>endGiveaway(msg.id,guild), durasi*60*1000);
         gdata.messageId = msg.id;
         activeGiveaways.set(msg.id, gdata);
         await interaction.reply({ embeds: [makeEmbed('🎉 Giveaway Dimulai!',
-          `**Hadiah:** ${hadiah}\n**Channel:** ${targetCh}\n**Durasi:** ${durasi} menit\n**Pemenang:** ${jumlahMenang}\n\n**ID Pesan:** \`${msg.id}\``,
+          `**Hadiah:** ${hadiah}\n**Channel:** ${targetCh}\n**Durasi:** ${durasi} menit\n` +
+          `**Pemenang:** ${jumlahMenang}\n**Penyelenggara:** <@${adminId}>\n**Cara Klaim:** ${klaim}\n\n` +
+          `**ID Pesan:** \`${msg.id}\``,
           COLORS.gold)], ephemeral:true });
         break;
       }
@@ -707,8 +773,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
           const count=Math.min(gdata.winnersCount,eligible.length), winners=[], pool=[...eligible];
           for(let i=0;i<count;i++){const idx=Math.floor(Math.random()*pool.length);winners.push(pool.splice(idx,1)[0]);}
           const wMentions = winners.map(u=>`<@${u.id}>`).join(', ');
+          const adminMention = `<@${gdata.adminId || gdata.hostId}>`;
+          const klaimText = gdata.klaim || `Hubungi ${adminMention}`;
           await ch.send({ content:wMentions, embeds:[new EmbedBuilder().setTitle('🔄 Reroll Giveaway!')
-            .setDescription(`**Hadiah:** 🎁 ${gdata.prize}\n\n🏆 **Pemenang Baru:**\n${wMentions}`)
+            .setDescription(
+              `**Hadiah:** 🎁 **${gdata.prize}**\n\n` +
+              `🏆 **Pemenang Baru:**\n${wMentions}\n\n` +
+              `━━━━━━━━━━━━━━━━━━━━\n` +
+              `📦 **Cara Klaim:** ${klaimText}\n` +
+              `👤 **Penyelenggara:** ${adminMention}`
+            )
             .setColor(COLORS.gold).setTimestamp()] });
           await interaction.reply({ embeds:[makeEmbed('✅ Reroll Berhasil!',`Pemenang: ${wMentions}`,COLORS.success)], ephemeral:true });
         } catch(err) { await interaction.reply({ embeds:[makeEmbed('❌',err.message,COLORS.danger)], ephemeral:true }); }
